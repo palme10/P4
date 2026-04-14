@@ -1,0 +1,128 @@
+#Team Members: Elijah Palmer, Zachary Worthington
+#This code webscrapes the october general conference talks
+#
+
+#The imports needed
+from bs4 import BeautifulSoup
+import requests
+import pandas as pd
+import sqlalchemy
+import matplotlib.pyplot as plot
+
+engine = sqlalchemy.create_engine('postgresql://postgres:4E2Prugby%40@localhost:5432/is303')
+
+standard_works_dict = {'Speaker_Name' : '', 'Talk_Name' : '', 'Kicker' : '', 'Matthew': 0, 'Mark': 0, 'Luke': 0, 'John': 0, 'Acts': 0, 'Romans': 0, '1 Corinthians': 0, '2 Corinthians': 0, 'Galatians': 0, 'Ephesians': 0, 'Philippians': 0, 'Colossians': 0, '1 Thessalonians': 0, '2 Thessalonians': 0, '1 Timothy': 0, '2 Timothy': 0, 'Titus': 0, 'Philemon': 0, 'Hebrews': 0, 'James': 0, '1 Peter': 0, '2 Peter': 0, '1 John': 0, '2 John': 0, '3 John': 0, 'Jude': 0, 'Revelation': 0, 'Genesis': 0, 'Exodus': 0, 'Leviticus': 0, 'Numbers': 0, 'Deuteronomy': 0, 'Joshua': 0, 'Judges': 0, 'Ruth': 0, '1 Samuel': 0, '2 Samuel': 0, '1 Kings': 0, '2 Kings': 0, '1 Chronicles': 0, '2 Chronicles': 0, 'Ezra': 0, 'Nehemiah': 0, 'Esther': 0, 'Job': 0, 'Psalm': 0, 'Proverbs': 0, 'Ecclesiastes': 0, 'Song of Solomon': 0, 'Isaiah': 0, 'Jeremiah': 0, 'Lamentations': 0, 'Ezekiel': 0, 'Daniel': 0, 'Hosea': 0, 'Joel': 0, 'Amos': 0, 'Obadiah': 0, 'Jonah': 0, 'Micah': 0, 'Nahum': 0, 'Habakkuk': 0, 'Zephaniah': 0, 'Haggai': 0, 'Zechariah': 0, 'Malachi': 0, '1 Nephi': 0, '2 Nephi': 0, 'Jacob': 0, 'Enos': 0, 'Jarom': 0, 'Omni': 0, 'Words of Mormon': 0, 'Mosiah': 0, 'Alma': 0, 'Helaman': 0, '3 Nephi': 0, '4 Nephi': 0, 'Mormon': 0, 'Ether': 0, 'Moroni': 0, 'Doctrine and Covenants': 0, 'Moses': 0, 'Abraham': 0, 'Joseph Smith—Matthew': 0, 'Joseph Smith—History': 0, 'Articles of Faith': 0}
+baseUrl = 'https://www.churchofjesuschrist.org'
+specificUrl = baseUrl + '/study/general-conference/2025/10?lang=eng'
+
+user_selection = input('If you want to scrape data, enter 1. If you want to see summaries of stored data, enter 2. Enter any other value to exit the program: ')
+
+if user_selection == '1':
+    
+    drop_table_query = sqlalchemy.text("drop table if exists general_conference;")
+    conn = engine.connect()
+    conn.execute(drop_table_query)
+    conn.commit()
+    conn.close()
+    
+    response = requests.get(specificUrl)
+    response.encoding = 'utf-8'
+    soup = BeautifulSoup(response.text, 'html.parser')
+
+    talks = soup.find_all('a', href=lambda h: h and '/study/general-conference/2025/10/' in h)
+
+    visited = set()
+    for iCount in talks:
+        href = iCount.get('href', '')
+
+        if 'session' in href.lower():
+            continue
+        
+        if href in visited:
+            continue
+        visited.add(href)
+        
+        full_url = baseUrl + href
+        print(f'trying to scrape url: {full_url}')
+
+        talk_response = requests.get(full_url)
+        talk_response.encoding = 'utf-8'
+        talk_soup = BeautifulSoup(talk_response.text, 'html.parser')
+
+        title = talk_soup.find('h1')
+        if title and 'Sustaining' in title.get_text():
+            continue
+
+        conference_dic = standard_works_dict.copy()
+        speaker = talk_soup.find('p', class_='author-name')
+        if speaker:
+            quote = speaker.get_text(strip=True)
+            if quote.startswith('By '):
+                quote = quote[3:]
+            conference_dic['Speaker_Name'] = quote
+        
+        if title:
+            conference_dic['Talk_Name'] = title.get_text(strip=True)
+        kicker = talk_soup.find('p', class_ = "kicker")
+        if kicker:
+            conference_dic["Kicker"] = kicker.get_text(strip=True)
+        
+        footnotes = talk_soup.find('footer', class_='notes')
+
+        if footnotes is not None:
+            footnotes_text = footnotes.get_text()
+            for book in standard_works_dict:
+                if book in ('Speaker_Name', 'Talk_Name', 'Kicker'):
+                    continue
+                conference_dic[book] = footnotes_text.count(book)
+
+            df = pd.DataFrame([conference_dic])
+            df.to_sql('general_conference', engine, if_exists='append', index=False)
+
+    print("You've saved the scraped data to your postgres database.")
+elif user_selection == '2':
+    user_selection_2 = input('You selected to see summaries. Enter 1 to see a summary of all talks. Enter 2 to select a specific talk. Enter anything else to exit: ')
+
+    if user_selection_2 == "1":
+        sql_query = 'select * from general_conference'
+        df_from_postgres = pd.read_sql_query(sql_query, engine)
+
+        df_sums = df_from_postgres.drop(['Speaker_Name', 'Talk_Name', 'Kicker'], axis=1).sum()
+        df_sums_filtered = df_sums[df_sums > 2]
+
+        df_sums_filtered.plot(kind='bar')
+        plot.title('Standard Works Referenced in General Conference')
+        plot.xlabel('Standard Works Books')
+        plot.ylabel('# Times Referenced')
+        plot.show()
+
+
+    elif user_selection_2 == "2":
+        sql_query = 'select * from general_conference'
+        df_from_postgres = pd.read_sql_query(sql_query, engine)
+
+        dict = {}
+        print('The following are the names of speakers and their talks:')
+        for index, row in df_from_postgres.iterrows():
+            display_number = index + 1
+            dict[display_number] = row['Talk_Name']
+            print(f'{display_number}: {row["Speaker_Name"]} - {row["Talk_Name"]}')
+
+        selected = int(input('Please enter the number of the talk you want to see summarized: '))
+        requested_talk = dict[selected]
+
+        df_filtered = df_from_postgres.query(f"Talk_Name == '{requested_talk}'")
+
+        df_filtered = df_filtered.drop(['Speaker_Name', 'Talk_Name', 'Kicker'], axis=1).sum()
+        df_filtered = df_filtered[df_filtered > 0]
+
+        df_filtered.plot(kind='bar')
+        plot.title(f'Standard works Referenced in: {requested_talk}')
+        plot.xlabel('Standard Works Books')
+        plot.ylabel('# Times Referenced')
+        plot.show()
+    else:
+        print('Closing the program.')
+
+else:
+    print('Closing the program.')
