@@ -1,4 +1,4 @@
-#Team Members: Elijah Palmer, Zachary Worthington, Adam Cammack
+#Team Members: Elijah Palmer, Zachary Worthington, Adam Cammack, Maddox Swift
 #This code webscrapes the october general conference talks
 #
 
@@ -97,12 +97,14 @@ if user_selection == '1':
             df = pd.DataFrame([conference_dic])
             df.to_sql('general_conference', engine, if_exists='append', index=False)
 
-    #Print message back to user
+    #Print confirmation
     print("You've saved the scraped data to your postgres database.")
-    
+
+ #Option see summaries   
 elif user_selection == '2':
     user_selection_2 = input('You selected to see summaries. Enter 1 to see a summary of all talks. Enter 2 to select a specific talk. Enter anything else to exit: ')
 
+    #Summary of all talks 
     if user_selection_2 == "1":
         sql_query = 'select * from general_conference'
         df_from_postgres = pd.read_sql_query(sql_query, engine)
@@ -117,6 +119,7 @@ elif user_selection == '2':
         plot.show()
 
 
+    #Summary of specific talk
     elif user_selection_2 == "2":
         sql_query = 'select * from general_conference'
         df_from_postgres = pd.read_sql_query(sql_query, engine)
@@ -128,6 +131,7 @@ elif user_selection == '2':
             dict[display_number] = row['Talk_Name']
             print(f'{display_number}: {row["Speaker_Name"]} - {row["Talk_Name"]}')
 
+        #Talk selection
         selected = int(input('Please enter the number of the talk you want to see summarized: '))
         requested_talk = dict[selected]
 
@@ -144,5 +148,6 @@ elif user_selection == '2':
     else:
         print('Closing the program.')
 
+#Close message
 else:
     print('Closing the program.')
